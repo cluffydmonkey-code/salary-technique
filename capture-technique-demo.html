@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capture Technique Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef1f5;
+    --panel: #ffffff;
+    --ink: #1b2433;
+    --muted: #5d6b80;
+    --line: #d5dce6;
+    --track: #dde3ec;
+    --accent: #2f5bea;
+    --cooldown: #e8a33d;
+    --success: #1f9d7a;
+    --carry: #8a4fd8;
+    --danger: #d64545;
+    --sans: "Sora", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10151f;
+      --panel: #182030;
+      --ink: #e7ecf4;
+      --muted: #93a1b6;
+      --line: #2a3446;
+      --track: #263045;
+      --accent: #6b8cff;
+      --cooldown: #f0b457;
+      --success: #3cc39d;
+      --carry: #b48cf2;
+      --danger: #ff7272;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink); font-family: var(--sans); line-height: 1.6; }
+  main { max-width: 880px; margin: 0 auto; padding: 48px 24px 64px; }
+  h1 { font-size: 1.5rem; font-weight: 600; margin: 0 0 6px; }
+  h2 { font-size: 0.95rem; font-weight: 600; margin: 0 0 10px; }
+  .intro { color: var(--muted); margin: 0 0 28px; max-width: 62ch; }
+  [hidden] { display: none !important; }
+
+  /* Technique chooser */
+  .chooser { margin-bottom: 28px; }
+  .chooser-q { font-weight: 600; margin: 0 0 10px; }
+  .segmented {
+    display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  }
+  .segmented input { position: absolute; opacity: 0; pointer-events: none; }
+  .segmented label {
+    padding: 10px 18px; border-radius: 9px; cursor: pointer;
+    color: var(--muted); font-size: 0.95rem; transition: background 0.15s, color 0.15s;
+  }
+  .segmented input:checked + label { background: var(--accent); color: #fff; font-weight: 600; }
+  .segmented input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* Phase strip */
+  .phases { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 28px; }
+  .phase { padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); font-size: 0.85rem; color: var(--muted); }
+  .phase b { color: var(--ink); font-weight: 600; }
+  .phase.current { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  .phase.current b { color: var(--accent); }
+
+  /* Timer header */
+  .timer-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+  .timer { font-family: var(--mono); font-weight: 700; font-size: clamp(3.5rem, 12vw, 6rem); line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .timer-sub { color: var(--muted); font-size: 0.9rem; margin-top: 8px; }
+  .status-block { text-align: right; }
+  .status { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 0.9rem; border: 1.5px solid currentColor; }
+  .status.waiting { color: var(--muted); }
+  .status.available { color: var(--success); }
+  .status.cooldown { color: var(--cooldown); }
+  .status.carry { color: var(--carry); }
+  .status.skip { color: var(--danger); }
+  .next { margin-top: 10px; color: var(--muted); font-size: 0.9rem; }
+  .next strong { font-family: var(--mono); color: var(--ink); font-size: 1.1rem; }
+
+  /* Timeline */
+  .timeline { position: relative; height: 72px; margin: 0 10px 12px; }
+  .track, .fill, .cd { position: absolute; top: 22px; height: 10px; border-radius: 5px; }
+  .track { left: 0; right: 0; background: var(--track); }
+  .fill { left: 0; width: 0; background: var(--accent); }
+  .cd { width: 0; background: repeating-linear-gradient(45deg, var(--cooldown) 0 6px, transparent 6px 10px); border: 1.5px solid var(--cooldown); }
+  .dot { position: absolute; top: 27px; width: 18px; height: 18px; border-radius: 50%; transform: translate(-50%, -50%); background: var(--panel); border: 3px solid var(--accent); }
+  .dot.open { background: var(--success); border-color: var(--success); box-shadow: 0 0 0 6px color-mix(in srgb, var(--success) 25%, transparent); }
+  .dot.done { background: var(--success); border-color: var(--success); }
+  .dot.skip { border-style: dashed; border-color: var(--danger); }
+  .dot.carry { background: var(--carry); border-color: var(--carry); }
+  .dot.carry-ready { background: var(--panel); border-color: var(--carry); box-shadow: 0 0 0 6px color-mix(in srgb, var(--carry) 25%, transparent); }
+  .tick { position: absolute; top: 44px; transform: translateX(-50%); font-family: var(--mono); font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+  .tick.start { transform: none; }
+  .tick.end { transform: translateX(-100%); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 18px; font-size: 0.82rem; color: var(--muted); margin: 0 10px 32px; }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .sw { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+  .sw.next-sw { border: 3px solid var(--accent); background: var(--panel); }
+  .sw.done-sw { background: var(--success); }
+  .sw.skip-sw { border: 3px dashed var(--danger); background: var(--panel); }
+  .sw.carry-sw { background: var(--carry); }
+  .sw.cd-sw { border-radius: 3px; width: 22px; height: 10px; background: repeating-linear-gradient(45deg, var(--cooldown) 0 4px, transparent 4px 7px); border: 1.5px solid var(--cooldown); }
+
+  /* Panels and controls */
+  .panel { padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; margin-bottom: 20px; }
+  .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .spacer { flex: 1; }
+  button, select, input { font: inherit; font-size: 0.95rem; padding: 10px 18px; border-radius: 10px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
+  input[type="number"] { cursor: text; width: 64px; padding: 9px 8px; text-align: center; font-family: var(--mono); background: var(--bg); }
+  select { background: var(--panel); padding: 9px 12px; }
+  button:hover, select:hover, input[type="number"]:hover { border-color: var(--muted); }
+  button:focus-visible, select:focus-visible, input[type="number"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  #captureBtn { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; padding: 10px 26px; }
+  #captureBtn.locked { opacity: 0.45; }
+  #captureBtn.carry { background: var(--carry); border-color: var(--carry); }
+  .field { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.9rem; }
+  .config { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 20px; }
+  .config .field { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .config .row { display: flex; align-items: center; gap: 6px; }
+  .fixed { font-family: var(--mono); color: var(--ink); padding: 9px 0; }
+  .hint { color: var(--muted); font-size: 0.82rem; margin: 10px 0 0; }
+  .error { color: var(--danger); font-size: 0.85rem; margin: 6px 0 0; min-height: 1.2em; }
+
+  .log { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 0.85rem; color: var(--muted); }
+  .log li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .log li.err { color: var(--danger); }
+  .log li.ok { color: var(--ink); }
+  .log li.carry { color: var(--carry); }
+  .log li.pay { color: var(--success); font-weight: 700; }
+  .log .empty { font-family: var(--sans); }
+
+  @media (max-width: 560px) {
+    .status-block { text-align: left; }
+    .spacer { display: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Capture countdown</h1>
+  <p class="intro" id="intro"></p>
+
+  <section class="chooser">
+    <p class="chooser-q">Is the account salary limited?</p>
+    <div class="segmented" role="radiogroup" aria-label="Salary limit status">
+      <input type="radio" name="technique" id="techNormal" value="normal" checked>
+      <label for="techNormal">Not yet, use normal capture</label>
+      <input type="radio" name="technique" id="techLimit" value="limit">
+      <label for="techLimit">Yes, use salary limit technique</label>
+    </div>
+  </section>
+
+  <div class="phases" id="phases"></div>
+
+  <section class="timer-row">
+    <div>
+      <div class="timer" id="timer">30:00</div>
+      <div class="timer-sub" id="sessionLabel">Session 1</div>
+    </div>
+    <div class="status-block">
+      <span class="status waiting" id="status">Waiting</span>
+      <div class="next">Next capture at <strong id="next">24:59</strong></div>
+    </div>
+  </section>
+
+  <section class="timeline" aria-label="Session timeline">
+    <div class="track"></div>
+    <div class="fill" id="fill"></div>
+    <div class="cd" id="cd"></div>
+    <div id="marks"></div>
+    <div class="tick start" style="left:0">30:00</div>
+    <div class="tick end" style="left:100%">00:00</div>
+  </section>
+
+  <div class="legend">
+    <span><i class="sw next-sw"></i>Upcoming capture</span>
+    <span><i class="sw done-sw"></i>Captured</span>
+    <span data-limit-only><i class="sw skip-sw"></i>Left unused</span>
+    <span data-limit-only><i class="sw carry-sw"></i>Carry-over capture</span>
+    <span><i class="sw cd-sw"></i>Cooldown</span>
+  </div>
+
+  <section class="panel controls">
+    <button id="captureBtn">Capture</button>
+    <button id="pauseBtn">Pause</button>
+    <button id="resetBtn">Reset</button>
+    <div class="spacer"></div>
+    <label class="field" for="mode">Mode
+      <select id="mode">
+        <option value="auto" selected>Auto</option>
+        <option value="manual">Manual</option>
+      </select>
+    </label>
+    <label class="field" for="speed">Speed
+      <select id="speed">
+        <option value="1">1x</option>
+        <option value="30">30x</option>
+        <option value="60">60x</option>
+        <option value="180" selected>180x</option>
+      </select>
+    </label>
+  </section>
+
+  <section class="panel">
+    <h2>Settings</h2>
+    <div class="config">
+      <div class="field">First unlock at
+        <div class="row">
+          <input id="cfgMin" type="number" min="0" max="29" value="24" aria-label="First unlock minutes">
+          <span>:</span>
+          <input id="cfgSec" type="number" min="0" max="59" value="59" aria-label="First unlock seconds">
+        </div>
+      </div>
+      <div class="field">Captures in limit phase
+        <div class="row">
+          <input id="cfgLimit" type="number" min="1" max="5" value="2" aria-label="Captures in limit phase">
+        </div>
+      </div>
+      <div class="field">Cooldown
+        <span class="fixed">10:00</span>
+      </div>
+      <button id="applyBtn">Apply and restart</button>
+    </div>
+    <p class="hint">First unlock applies to both techniques. Captures in limit phase is used only by the salary limit technique.</p>
+    <p class="error" id="cfgError"></p>
+  </section>
+
+  <h2>Activity</h2>
+  <ul class="log" id="log"><li class="empty">No activity yet.</li></ul>
+</main>
+
+<script>
+  // ---- Settings (seconds) ----
+  const TOTAL = 30 * 60;     // session length
+  const COOLDOWN = 10 * 60;  // fixed 10:00 cooldown
+  let FIRST_OPEN = 24 * 60 + 59;
+  let LIMIT_CAPTURES = 2;
+  let technique = "normal";  // "normal" | "limit"
+
+  const COPY = {
+    normal: {
+      title: "Capture countdown",
+      intro: "Each session runs for 30 minutes. The first capture unlocks at the set time, and every capture starts a 10-minute cooldown before the next one opens.",
+    },
+    limit: {
+      title: "Salary limit technique",
+      intro: "The limit phase takes only some of the captures and leaves the last one unused. That unused capture carries over, so the next session opens with an extra capture right at 30:00.",
+    },
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const ui = {
+    title: $("title"), intro: $("intro"),
+    timer: $("timer"), sessionLabel: $("sessionLabel"), status: $("status"), next: $("next"),
+    fill: $("fill"), cd: $("cd"), marks: $("marks"), log: $("log"), phases: $("phases"),
+    capture: $("captureBtn"), pause: $("pauseBtn"), reset: $("resetBtn"),
+    mode: $("mode"), speed: $("speed"), apply: $("applyBtn"), cfgError: $("cfgError"),
+    cfgMin: $("cfgMin"), cfgSec: $("cfgSec"), cfgLimit: $("cfgLimit"),
+  };
+
+  let session, timeLeft, nextOpen, caps, cooldownStart, banked, history, running, lastTs;
+
+  const fmt = (s) => {
+    s = Math.max(0, Math.ceil(s));
+    return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
+  };
+  const pct = (s) => ((TOTAL - s) / TOTAL) * 100;
+  const isLimitPhase = () => technique === "limit" && session % 2 === 1; // odd = limit, even = full
+  const phaseName = () => (technique === "normal" ? "normal" : isLimitPhase() ? "limit" : "full");
+  const regularOpen = () => timeLeft > 0 && nextOpen > 0 && timeLeft <= nextOpen;
+  const canCapture = () => timeLeft > 0 && (banked || regularOpen());
+
+  function upcoming() {
+    const list = [];
+    for (let t = nextOpen; t > 0; t -= COOLDOWN) list.push(t);
+    return list;
+  }
+
+  function addLog(text, type) {
+    const empty = ui.log.querySelector(".empty");
+    if (empty) empty.remove();
+    const li = document.createElement("li");
+    li.className = type || "";
+    li.textContent = text;
+    ui.log.prepend(li);
+  }
+
+  function renderPhases() {
+    let html = "";
+    history.slice(-5).forEach((h) => {
+      html += `<div class="phase">Session ${h.session}, ${h.phase}: <b>${h.count} captures</b>${h.carried ? ", 1 carried over" : ""}</div>`;
+    });
+    html += `<div class="phase current">Session ${session}, ${phaseName()}: <b>${caps.length} so far</b></div>`;
+    ui.phases.innerHTML = html;
+  }
+
+  function render() {
+    ui.timer.textContent = fmt(timeLeft);
+    let sub = `Session ${session}`;
+    if (technique === "limit") sub += isLimitPhase() ? `, limit phase (${LIMIT_CAPTURES} captures)` : ", full phase";
+    ui.sessionLabel.textContent = sub;
+    ui.fill.style.width = pct(timeLeft) + "%";
+
+    const limitReached = isLimitPhase() && caps.length >= LIMIT_CAPTURES;
+    let state = "waiting", label = "Waiting";
+    if (banked) { state = "carry"; label = "Carry-over ready"; }
+    else if (regularOpen() && limitReached) { state = "skip"; label = "Leave it, let time run"; }
+    else if (regularOpen()) { state = "available"; label = "Capture available"; }
+    else if (cooldownStart !== null) { state = "cooldown"; label = "Cooldown"; }
+    ui.status.className = "status " + state;
+    ui.status.textContent = label;
+
+    ui.next.textContent = banked ? "now" : nextOpen > 0 ? fmt(nextOpen) : "--:--";
+    ui.capture.classList.toggle("locked", !canCapture());
+    ui.capture.classList.toggle("carry", banked);
+    ui.capture.textContent = banked ? "Use carry-over" : "Capture";
+
+    if (cooldownStart !== null && timeLeft > nextOpen) {
+      ui.cd.style.left = pct(cooldownStart) + "%";
+      ui.cd.style.width = (pct(timeLeft) - pct(cooldownStart)) + "%";
+    } else {
+      ui.cd.style.width = "0";
+    }
+
+    let html = "";
+    if (banked) html += `<div class="dot carry-ready" style="left:0%" title="Carry-over capture ready"></div>`;
+    caps.forEach((c) => {
+      html += `<div class="dot ${c.carry ? "carry" : "done"}" style="left:${pct(c.at)}%" title="${c.carry ? "Carry-over" : "Captured"} at ${fmt(c.at)}"></div>`;
+    });
+    let count = caps.length;
+    upcoming().forEach((t, i) => {
+      count++;
+      let cls = "dot";
+      if (isLimitPhase() && count > LIMIT_CAPTURES) cls += " skip";
+      else if (i === 0 && regularOpen()) cls += " open";
+      html += `<div class="${cls}" style="left:${pct(t)}%"></div><div class="tick" style="left:${pct(t)}%">${fmt(t)}</div>`;
+    });
+    ui.marks.innerHTML = html;
+    renderPhases();
+  }
+
+  function capture(exactTime) {
+    if (!canCapture()) {
+      addLog(`${fmt(timeLeft)}  Capture opens at ${nextOpen > 0 ? fmt(nextOpen) : "next session"}.`, "err");
+      return;
+    }
+    const at = exactTime ?? Math.ceil(timeLeft);
+    if (banked) {
+      // Carry-over capture: no cooldown, session schedule stays the same
+      banked = false;
+      caps.push({ at, carry: true });
+      addLog(`${fmt(at)}  Used carry-over capture. Schedule unchanged, next at ${fmt(nextOpen)}.`, "carry");
+    } else {
+      caps.push({ at, carry: false });
+      cooldownStart = at;
+      nextOpen = at - COOLDOWN;
+      addLog(`${fmt(at)}  Captured. Cooldown 10:00, next at ${nextOpen > 0 ? fmt(nextOpen) : "none"}.`, "ok");
+    }
+    render();
+  }
+
+  function endSession() {
+    // A capture that opened but was never used carries over to the next session
+    const carried = !banked && nextOpen > 0;
+    if (carried) banked = true;
+    history.push({ session, phase: phaseName(), count: caps.length, carried });
+    addLog(`Session ${session} ended. Salary received with ${caps.length} captures${carried ? ", 1 capture carried over" : ""}.`, "pay");
+
+    session++;
+    timeLeft = TOTAL;
+    nextOpen = FIRST_OPEN;
+    caps = [];
+    cooldownStart = null;
+    addLog(`Session ${session} started${technique === "limit" ? ` (${phaseName()} phase)` : ""}.`);
+  }
+
+  function autoStep() {
+    if (ui.mode.value !== "auto" || !canCapture()) return;
+    if (banked) { capture(Math.ceil(timeLeft)); return; }
+    if (isLimitPhase() && caps.length >= LIMIT_CAPTURES) return; // leave the last one unused
+    capture(nextOpen); // capture exactly when it unlocks
+  }
+
+  function setRunning(state) {
+    running = state;
+    ui.pause.textContent = running ? "Pause" : "Resume";
+  }
+
+  function applyTechniqueUI() {
+    ui.title.textContent = COPY[technique].title;
+    ui.intro.textContent = COPY[technique].intro;
+    document.title = COPY[technique].title + " demo";
+    document.querySelectorAll("[data-limit-only]").forEach((el) => (el.hidden = technique !== "limit"));
+  }
+
+  function reset() {
+    session = 1;
+    timeLeft = TOTAL;
+    nextOpen = FIRST_OPEN;
+    caps = [];
+    cooldownStart = null;
+    banked = false;
+    history = [];
+    lastTs = null;
+    ui.log.innerHTML = '<li class="empty">No activity yet.</li>';
+    applyTechniqueUI();
+    setRunning(true);
+    render();
+  }
+
+  function applySettings() {
+    const m = Number(ui.cfgMin.value), s = Number(ui.cfgSec.value), l = Number(ui.cfgLimit.value);
+    const total = m * 60 + s;
+    if (!Number.isInteger(m) || !Number.isInteger(s) || s < 0 || s > 59 || total <= 0 || total >= TOTAL) {
+      ui.cfgError.textContent = "First unlock must be between 00:01 and 29:59.";
+      return;
+    }
+    const maxCaps = Math.ceil(total / COOLDOWN); // captures that fit in one session
+    if (technique === "limit" || l !== LIMIT_CAPTURES) {
+      if (maxCaps < 2) {
+        ui.cfgError.textContent = "For the salary limit technique, first unlock must be 10:01 or later so one capture can be left for carry-over.";
+        return;
+      }
+      if (!Number.isInteger(l) || l < 1 || l > maxCaps - 1) {
+        ui.cfgError.textContent = `With a ${fmt(total)} first unlock, limit phase captures must be 1 to ${maxCaps - 1}.`;
+        return;
+      }
+    }
+    ui.cfgError.textContent = "";
+    FIRST_OPEN = total;
+    LIMIT_CAPTURES = l;
+    reset();
+  }
+
+  function tick(ts) {
+    if (lastTs === null) lastTs = ts;
+    const dt = (ts - lastTs) / 1000;
+    lastTs = ts;
+    if (running) {
+      timeLeft = Math.max(0, timeLeft - dt * Number(ui.speed.value));
+      autoStep();
+      if (timeLeft <= 0) endSession();
+      render();
+    }
+    requestAnimationFrame(tick);
+  }
+
+  document.querySelectorAll('input[name="technique"]').forEach((r) =>
+    r.addEventListener("change", () => {
+      technique = r.value;
+      // Re-check settings when switching into the salary limit technique
+      if (technique === "limit" && Math.ceil(FIRST_OPEN / COOLDOWN) - 1 < LIMIT_CAPTURES) {
+        ui.cfgError.textContent = "Current first unlock leaves no capture for carry-over. Adjust the settings and apply.";
+      } else {
+        ui.cfgError.textContent = "";
+      }
+      reset();
+    })
+  );
+  ui.capture.addEventListener("click", () => capture());
+  ui.pause.addEventListener("click", () => setRunning(!running));
+  ui.reset.addEventListener("click", reset);
+  ui.apply.addEventListener("click", applySettings);
+  [ui.cfgMin, ui.cfgSec, ui.cfgLimit].forEach((i) => i.addEventListener("input", () => (ui.cfgError.textContent = "")));
+
+  reset();
+  requestAnimationFrame(tick);
+</script>
+</body>
+</html>
